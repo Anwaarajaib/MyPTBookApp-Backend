@@ -16,7 +16,10 @@ const app = express();
 // Middleware
 app.use(cors());
 app.use(express.json());
-
+// Root route to show "Backend running"
+app.get("/", (req, res) => {
+  res.send("Backend running");
+});
 // Routes
 app.use("/api/auth", authRoutes);
 

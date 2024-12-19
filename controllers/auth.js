@@ -58,15 +58,11 @@ export const register = async (req, res) => {
             return res.status(400).json({ message: "Email already registered" });
         }
         
-        // Hash password
-        const hashedPassword = await bcrypt.hash(password, 12);
-        console.log('Password hashed successfully');
-        
-        // Create new user
+        // Create new user with mongoose model (password will be hashed by pre-save middleware)
         const user = new User({
             name,
             email: email.toLowerCase(),
-            password: hashedPassword
+            password
         });
         
         await user.save();

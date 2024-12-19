@@ -7,77 +7,58 @@ export const getClients = async (req, res) => {
         console.log('Getting clients for trainer:', req.user._id);
         
         const clients = await Client.find({ trainer: req.user._id });
-        console.log('Raw clients from DB:', JSON.stringify(clients, null, 2));
+        console.log(`Found ${clients.length} clients for trainer ${req.user._id}`);
         
-        if (!clients || clients.length === 0) {
-            console.log('No clients found for trainer');
-            return res.json([]); // Return empty array instead of error
-        }
-        
-        // Transform the data to match frontend expectations
-        const transformedClients = clients.map(client => {
-            console.log('Transforming client:', client._id);
+        // Transform the data to include trainer information
+        const clientsWithTrainer = clients.map(client => {
             const clientObj = client.toObject();
-            
-            // Transform sessions
-            if (clientObj.sessions) {
-                clientObj.sessions = clientObj.sessions.map(session => ({
-                    id: session._id,
-                    date: session.date,
-                    duration: session.duration,
-                    exercises: session.exercises,
-                    type: session.type,
-                    isCompleted: session.isCompleted,
-                    sessionNumber: session.sessionNumber
-                }));
-            }
-            
-            // Transform client
             return {
-                id: clientObj._id,
-                name: clientObj.name,
-                age: clientObj.age,
-                height: clientObj.height,
-                weight: clientObj.weight,
-                medicalHistory: clientObj.medicalHistory,
-                goals: clientObj.goals,
-                sessions: clientObj.sessions || [],
-                nutritionPlan: clientObj.nutritionPlan,
-                profileImagePath: clientObj.profileImagePath
+                ...clientObj,
+                id: clientObj._id, // Ensure we're sending id instead of _id
+                trainer: {
+                    _id: req.user._id,
+                    name: req.user.name
+                }
             };
         });
         
-        console.log('Sending transformed clients:', JSON.stringify(transformedClients, null, 2));
-        res.json(transformedClients);
+        res.json(clientsWithTrainer);
     } catch (error) {
-        console.error('Error getting clients:', error);
-        console.error('Error stack:', error.stack);
-        res.status(500).json({ message: error.message });
+        console.error('Error fetching clients:', error);
+        res.status(400).json({ message: error.message });
     }
 };
 
 // Create a new client
 export const createClient = async (req, res) => {
     try {
-        console.log('Create client request received');
-        console.log('Auth header:', req.headers.authorization);
-        console.log('User from token:', req.user);
+        console.log('Creating client for trainer:', req.user._id);
+        console.log('Request body:', req.body);
         
-        const client = new Client({
-            _id: uuidv4(),
+        const clientData = {
             ...req.body,
-            trainer: req.user._id
-        });
+            _id: uuidv4(), // Generate new UUID
+            trainer: req.user._id, // Assign current user as trainer
+            sessions: req.body.sessions || [] // Ensure sessions exists
+        };
         
-        const savedClient = await client.save();
-        console.log('Client created:', savedClient);
+        const client = new Client(clientData);
+        await client.save();
         
-        res.status(201).json(savedClient);
+        // Return the client with trainer information
+        const clientWithTrainer = {
+            ...client.toObject(),
+            id: client._id, // Ensure we're sending id instead of _id
+            trainer: {
+                _id: req.user._id,
+                name: req.user.name
+            }
+        };
+        
+        console.log('Created client:', clientWithTrainer);
+        res.status(201).json(clientWithTrainer);
     } catch (error) {
         console.error('Error creating client:', error);
-        if (error.name === 'UnauthorizedError') {
-            return res.status(401).json({ message: 'Invalid token' });
-        }
         res.status(400).json({ message: error.message });
     }
 };

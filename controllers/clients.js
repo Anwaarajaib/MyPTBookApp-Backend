@@ -4,9 +4,54 @@ import { v4 as uuidv4 } from 'uuid';
 // Get all clients for a trainer
 export const getClients = async (req, res) => {
     try {
+        console.log('Getting clients for trainer:', req.user._id);
+        
         const clients = await Client.find({ trainer: req.user._id });
-        res.json(clients);
+        console.log('Raw clients from DB:', JSON.stringify(clients, null, 2));
+        
+        if (!clients || clients.length === 0) {
+            console.log('No clients found for trainer');
+            return res.json([]); // Return empty array instead of error
+        }
+        
+        // Transform the data to match frontend expectations
+        const transformedClients = clients.map(client => {
+            console.log('Transforming client:', client._id);
+            const clientObj = client.toObject();
+            
+            // Transform sessions
+            if (clientObj.sessions) {
+                clientObj.sessions = clientObj.sessions.map(session => ({
+                    id: session._id,
+                    date: session.date,
+                    duration: session.duration,
+                    exercises: session.exercises,
+                    type: session.type,
+                    isCompleted: session.isCompleted,
+                    sessionNumber: session.sessionNumber
+                }));
+            }
+            
+            // Transform client
+            return {
+                id: clientObj._id,
+                name: clientObj.name,
+                age: clientObj.age,
+                height: clientObj.height,
+                weight: clientObj.weight,
+                medicalHistory: clientObj.medicalHistory,
+                goals: clientObj.goals,
+                sessions: clientObj.sessions || [],
+                nutritionPlan: clientObj.nutritionPlan,
+                profileImagePath: clientObj.profileImagePath
+            };
+        });
+        
+        console.log('Sending transformed clients:', JSON.stringify(transformedClients, null, 2));
+        res.json(transformedClients);
     } catch (error) {
+        console.error('Error getting clients:', error);
+        console.error('Error stack:', error.stack);
         res.status(500).json({ message: error.message });
     }
 };
@@ -100,10 +145,9 @@ export const getClientSessions = async (req, res) => {
 // Create sessions for client
 export const createSessions = async (req, res) => {
     try {
-        console.log('\n=== Creating Sessions ===');
+        console.log('=== Creating Sessions ===');
         console.log('Client ID:', req.params.clientId);
-        console.log('User ID:', req.user._id);
-        console.log('Auth Token:', req.headers.authorization);
+        console.log('Request body:', JSON.stringify(req.body, null, 2));
 
         const client = await Client.findOne({ 
             _id: req.params.clientId, 
@@ -112,50 +156,41 @@ export const createSessions = async (req, res) => {
         
         if (!client) {
             console.log('❌ Client not found');
-            console.log('Searched for client with:');
-            console.log('- _id:', req.params.clientId);
-            console.log('- trainer:', req.user._id);
             return res.status(404).json({ message: 'Client not found' });
         }
-
-        console.log('✅ Found client:', client._id);
 
         if (!req.body.sessions || !Array.isArray(req.body.sessions)) {
             console.log('❌ Invalid sessions data');
             return res.status(400).json({ message: 'Invalid sessions data' });
         }
 
-        // Map the sessions to include _id instead of id
-        const sessionsToAdd = req.body.sessions.map(session => {
-            console.log('Processing session:', session.id);
-            return {
-                _id: session.id,
-                date: session.date,
-                duration: session.duration,
-                exercises: session.exercises.map(exercise => ({
-                    id: exercise.id,
-                    name: exercise.name,
-                    sets: exercise.sets,
-                    reps: exercise.reps,
-                    weight: exercise.weight,
-                    isPartOfCircuit: exercise.isPartOfCircuit,
-                    circuitName: exercise.circuitName,
-                    setPerformances: exercise.setPerformances
-                })),
-                type: session.type,
-                isCompleted: session.isCompleted,
-                sessionNumber: session.sessionNumber
-            };
-        });
+        // Map the sessions with proper structure
+        const sessionsToAdd = req.body.sessions.map(session => ({
+            _id: session._id,
+            date: new Date(session.date),
+            duration: session.duration || 0,
+            exercises: session.exercises.map(exercise => ({
+                id: exercise.id,
+                name: exercise.name || '',
+                sets: exercise.sets || 0,
+                reps: exercise.reps || '',
+                weight: exercise.weight || '',
+                isPartOfCircuit: exercise.isPartOfCircuit || false,
+                circuitName: exercise.circuitName || '',
+                setPerformances: exercise.setPerformances || []
+            })),
+            type: session.type || '',
+            isCompleted: session.isCompleted || false,
+            sessionNumber: session.sessionNumber || 1
+        }));
 
-        console.log('Adding sessions to client...');
-        client.sessions.push(...sessionsToAdd);
+        // Replace existing sessions with new ones
+        client.sessions = sessionsToAdd;
         
-        console.log('Saving client...');
         const savedClient = await client.save();
         console.log('✅ Client saved successfully');
 
-        // Transform the sessions back to frontend format
+        // Transform sessions for response
         const responseData = savedClient.sessions.map(session => ({
             id: session._id,
             date: session.date,
@@ -166,11 +201,10 @@ export const createSessions = async (req, res) => {
             sessionNumber: session.sessionNumber
         }));
         
-        console.log('Sending response with', responseData.length, 'sessions');
         res.status(201).json(responseData);
     } catch (error) {
-        console.error('❌ Error creating sessions:', error);
-        console.error('Stack trace:', error.stack);
+        console.log('❌ Error creating sessions:', error);
+        console.log('Stack trace:', error.stack);
         res.status(400).json({ message: error.message });
     }
 };
